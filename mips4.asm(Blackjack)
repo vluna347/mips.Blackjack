@@ -2,7 +2,8 @@
 #Design Note:
 # Blackjack: A player starts with two cards that are randomly generated
 # & can choose to either Hit to receive another card, or Stand and then 
-# end their turn. Cards are drawn until dealer reaches a total of at least 17.
+# end their turn. Player is represented by red color, dealer is represented by 
+# blue color. Cards are drawn until dealer reaches a total of at least 17.
 # Winner is decided by comparing the player & dealer's totals. Totals over 21
 # result in a bust. Variables are used to store player totals, # of cards, as
 #  well as # of Aces.
