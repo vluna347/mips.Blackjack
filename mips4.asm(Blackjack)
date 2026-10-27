@@ -1,0 +1,426 @@
+#Instructions developed with help from ChatGPT OpenAI
+#Design Note:
+# Blackjack: A player starts with two cards that are randomly generated
+# & can choose to either Hit to receive another card, or Stand and then 
+# end their turn. Cards are drawn until dealer reaches a total of at least 17.
+# Winner is decided by comparing the player & dealer's totals. Totals over 21
+# result in a bust. Variables are used to store player totals, # of cards, as
+#  well as # of Aces.
+
+.data
+# Game totals and counts
+pTotal:  .word 0
+dTotal:  .word 0
+pAces:   .word 0
+dAces:   .word 0
+pCount:  .word 0
+dCount:  .word 0
+
+# Messages
+title:   .asciiz "\n--- BLACKJACK ---\n"
+pMsg:    .asciiz "\nYour total: "
+
+
+
+dMsg:    .asciiz "\nDealer total: "
+hitMsg:  .asciiz "\nEnter 1 to Hit or 2 to Stand: "
+badMsg:  .asciiz "Invalid choice. Enter 1 or 2.\n"
+bustMsg: .asciiz "\nYou busted! Dealer wins.\n"
+winMsg:  .asciiz "\nYou win!\n"
+loseMsg: .asciiz "\nDealer wins!\n"
+tieMsg:  .asciiz "\nIt's a tie!\n"
+dealerMsg: .asciiz "\nDealer's turn...\n"
+
+.text
+.globl main
+
+
+
+main:
+    # Clear Bitmap Display
+    jal clearDisplay
+
+    # Print game title
+    li $v0, 4
+    la $a0, title
+    syscall
+
+    # Deal two cards to player
+    jal addPlayerCard
+    jal addPlayerCard
+
+    # Deal two cards to dealer
+    jal addDealerCard
+    jal addDealerCard
+
+    # Show starting totals
+    jal showTotals
+
+    # Player's turn
+playerTurn:
+    # If player total > 21, player loses
+    lw $t0, pTotal
+    li $t1, 21
+    bgt $t0, $t1, playerBust
+
+    # Ask Hit or Stand
+    li $v0, 4
+    la $a0, hitMsg
+    syscall
+
+    li $v0, 5
+    syscall
+
+    # Hit
+    li $t0, 1
+    beq $v0, $t0, playerHit
+
+    # Stand
+    li $t0, 2
+    beq $v0, $t0, dealerTurn
+
+    # Invalid choice
+    li $v0, 4
+    la $a0, badMsg
+    syscall
+    j playerTurn
+
+playerHit:
+    jal addPlayerCard
+    jal showTotals
+    j playerTurn
+
+# Dealer's turn
+# Dealer draws until total >= 17
+
+dealerTurn:
+    li $v0, 4
+    la $a0, dealerMsg
+    syscall
+
+dealerLoop:
+    lw $t0, dTotal
+    li $t1, 17
+    bge $t0, $t1, compareHands
+
+    jal addDealerCard
+    jal showTotals
+    j dealerLoop
+
+# Compare player and dealer totals
+
+compareHands:
+    lw $t0, dTotal
+    li $t1, 21
+    bgt $t0, $t1, playerWins
+
+    lw $t0, pTotal
+    lw $t1, dTotal
+
+    bgt $t0, $t1, playerWins
+    blt $t0, $t1, dealerWins
+
+    # Same total
+    li $v0, 4
+    la $a0, tieMsg
+    syscall
+    j exit
+
+playerBust:
+    li $v0, 4
+    la $a0, bustMsg
+    syscall
+    j exit
+
+playerWins:
+    li $v0, 4
+    la $a0, winMsg
+    syscall
+    j exit
+
+dealerWins:
+    li $v0, 4
+    la $a0, loseMsg
+    syscall
+
+exit:
+    li $v0, 10
+    syscall
+
+# addPlayerCard
+# Generate a card and add it to
+# the player's total.
+
+addPlayerCard:
+    addiu $sp, $sp, -4
+    sw $ra, 0($sp)
+
+    jal randomCard
+
+    # $v0 = card value
+    move $t0, $v0
+
+    # Add card to player total
+    lw $t1, pTotal
+    add $t1, $t1, $t0
+    sw $t1, pTotal
+
+    # If card is an Ace (11), count it
+    li $t2, 11
+    bne $t0, $t2, playerAdjust
+
+    lw $t3, pAces
+    addi $t3, $t3, 1
+    sw $t3, pAces
+
+playerAdjust:
+    # If total > 21 and player has Aces,
+    # change an Ace from 11 to 1
+    lw $t1, pTotal
+    li $t2, 21
+    ble $t1, $t2, playerDraw
+
+    lw $t3, pAces
+    beq $t3, $zero, playerDraw
+
+    addi $t1, $t1, -10
+    sw $t1, pTotal
+
+    addi $t3, $t3, -1
+    sw $t3, pAces
+
+    j playerAdjust
+
+playerDraw:
+    # Draw player's card on Bitmap Display
+    lw $a0, pCount
+    li $a1, 1
+    li $a2, 0x00FF0000       # Red
+    jal drawCard
+
+    # Increase player card count
+    lw $t0, pCount
+    addi $t0, $t0, 1
+    sw $t0, pCount
+
+    lw $ra, 0($sp)
+    addiu $sp, $sp, 4
+    jr $ra
+
+# addDealerCard
+# Generate a card and add it to
+# the dealer's total.
+
+addDealerCard:
+    addiu $sp, $sp, -4
+    sw $ra, 0($sp)
+
+    jal randomCard
+
+    move $t0, $v0
+
+    # Add card to dealer total
+    lw $t1, dTotal
+    add $t1, $t1, $t0
+    sw $t1, dTotal
+
+    # Count Ace
+    li $t2, 11
+    bne $t0, $t2, dealerAdjust
+
+    lw $t3, dAces
+    addi $t3, $t3, 1
+    sw $t3, dAces
+
+dealerAdjust:
+    # Adjust Ace from 11 to 1 if busting
+    lw $t1, dTotal
+    li $t2, 21
+    ble $t1, $t2, dealerDraw
+
+    lw $t3, dAces
+    beq $t3, $zero, dealerDraw
+
+    addi $t1, $t1, -10
+    sw $t1, dTotal
+
+    addi $t3, $t3, -1
+    sw $t3, dAces
+
+    j dealerAdjust
+
+dealerDraw:
+    # Draw dealer card on Bitmap Display
+    lw $a0, dCount
+    li $a1, 2
+    li $a2, 0x000000FF       # Blue
+    jal drawCard
+
+    # Increase dealer card count
+    lw $t0, dCount
+    addi $t0, $t0, 1
+    sw $t0, dCount
+
+    lw $ra, 0($sp)
+    addiu $sp, $sp, 4
+    jr $ra
+
+# randomCard
+# Returns a card value in $v0.
+#
+# Ace = 11
+# 2-10 = face value
+# Jack, Queen, King = 10
+
+randomCard:
+    # Random integer 0 through 12
+    li $a0, 0
+    li $a1, 13
+    li $v0, 42
+    syscall
+
+    # Convert to card number 1 through 13
+    addi $t0, $a0, 1
+
+    # Face cards are worth 10
+    li $t1, 10
+    ble $t0, $t1, checkAce
+
+    li $t0, 10
+    j cardReady
+
+checkAce:
+    # Ace is worth 11
+    li $t1, 1
+    bne $t0, $t1, cardReady
+
+    li $t0, 11
+
+cardReady:
+    move $v0, $t0
+    jr $ra
+
+# showTotals
+# Print player's and dealer's totals
+
+showTotals:
+    li $v0, 4
+    la $a0, pMsg
+    syscall
+
+    li $v0, 1
+    lw $a0, pTotal
+    syscall
+
+    li $v0, 4
+    la $a0, dMsg
+    syscall
+
+    li $v0, 1
+    lw $a0, dTotal
+    syscall
+
+    jr $ra
+
+# clearDisplay
+# Clears 32 x 32 Bitmap Display
+
+clearDisplay:
+    li $t0, 0x10008000
+    li $t1, 1024
+
+clearLoop:
+    sw $zero, 0($t0)
+    addi $t0, $t0, 4
+    addi $t1, $t1, -1
+    bgtz $t1, clearLoop
+
+    jr $ra
+
+# drawCard
+# a0 = card index
+# a1 = player (1=player, 2=dealer)
+# a2 = color
+#
+# Draws a colored card block.
+
+drawCard:
+    addiu $sp, $sp, -24
+
+    sw $ra, 20($sp)
+    sw $s0, 16($sp)
+    sw $s1, 12($sp)
+    sw $s2, 8($sp)
+    sw $s3, 4($sp)
+    sw $s4, 0($sp)
+
+    # Save arguments
+    move $s0, $a0
+    move $s1, $a1
+    move $s2, $a2
+
+    # x = 2 + card index * 5
+    mul $s3, $s0, 5
+    addi $s3, $s3, 2
+
+    # Dealer cards at top; player cards at bottom
+    li $s4, 2
+    li $t0, 1
+    beq $s1, $t0, playerCardY
+
+    j cardDrawStart
+
+playerCardY:
+    li $s4, 20
+
+cardDrawStart:
+    li $t7, 0              # Y counter
+
+cardYLoop:
+    li $t6, 0              # X counter
+
+cardXLoop:
+    # x coordinate
+    add $a0, $s3, $t6
+
+    # y coordinate
+    add $a1, $s4, $t7
+
+    # color
+    move $a2, $s2
+
+    jal pixel
+
+    addi $t6, $t6, 1
+    li $t5, 4
+    blt $t6, $t5, cardXLoop
+
+    addi $t7, $t7, 1
+    li $t5, 6
+    blt $t7, $t5, cardYLoop
+
+    # Restore saved registers
+    lw $s4, 0($sp)
+    lw $s3, 4($sp)
+    lw $s2, 8($sp)
+    lw $s1, 12($sp)
+    lw $s0, 16($sp)
+    lw $ra, 20($sp)
+
+    addiu $sp, $sp, 24
+    jr $ra
+
+# pixel
+# Draw pixel at (a0,a1) with color a2
+
+pixel:
+    li $t0, 32
+    mul $t1, $a1, $t0
+    add $t1, $t1, $a0
+    sll $t1, $t1, 2
+
+    li $t0, 0x10008000
+    add $t0, $t0, $t1
+
+    sw $a2, 0($t0)
+    jr $ra
